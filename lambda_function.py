@@ -35,6 +35,44 @@ HOTPEPPER = os.environ['hotpepper']
 JALAN = os.environ['jalan']
 
 
+def delete_old_publications():
+    try:
+        results = requests.get(
+            "https://slack.com/api/search.messages",
+            params={
+                'token': os.environ['token2'],
+                'query': os.environ['query'],
+                'sort': 'timestamp',
+                'sort_dir': 'asc',
+            }
+        )
+        if results.status_code != 200:
+            LOGGER.error(f"status code: {results.staus_code}, reason: {results.reason}, content: {results.content}")
+        message_list = results.json()['messages']['matches']
+
+        for msg in message_list:
+            # 14日以上過ぎていたら削除する
+            target = datetime.datetime.fromtimestamp(float(msg['ts']))
+            limit = datetime.datetime.now() - datetime.timedelta(days=14)
+            if target < limit:
+                print(msg['username'], msg['ts'], msg['text'])
+                delete_msg = requests.post(
+                    'https://slack.com/api/chat.delete',
+                    headers={
+                        'content-type': 'application/json; charset=utf-8',
+                        "Authorization": f"Bearer {os.environ['oauth_token']}",
+                    },
+                    data=json.dumps({
+                        'token': os.environ['api_token'],
+                        'channel': msg['channel']['id'],
+                        'ts': msg['ts']
+                    })
+                )
+                LOGGER.info(f"{delete_msg.status_code} {delete_msg.json()}")
+    except Exception:
+        LOGGER.error(traceback.format_exc())
+
+
 class MethodGroup:
     """やりたい処理を定義."""
 
@@ -510,6 +548,7 @@ def lambda_handler(event, context):
         if isinstance(event, dict) and event.get('source') == 'aws.events':
             # CloudWatch Event のやつ
             asyncio.run(runner())
+            delete_old_publications()
 
         if isinstance(event, dict) and event.get('body'):
             # Slack App のやつ
